@@ -1,0 +1,136 @@
+<template>
+    <!-- Top bar: title (left) + action buttons (right) -->
+    <section class={hostClass}>
+    <div class="de-header-bar">
+        <!-- Lip-synced 3D avatar bust (speaks agent replies) -->
+        <c-de_avatar-face
+            class="de-avatar-mount"
+            language={avatarLang}
+            big={avatarBig}></c-de_avatar-face>
+
+        <!-- Header title (left) -->
+        <span class="de-header-title">{headerTitle}</span>
+
+        <!-- Collapsed: expand affordance sits inline next to the title -->
+        <template if:true={showCollapsedHint}>
+            <button class="de-opt-expand" onclick={handleExpandOptions} title="Expand options">
+                <lightning-icon icon-name="utility:chevrondown" size="xx-small"></lightning-icon>
+                <span>Expand options</span>
+            </button>
+        </template>
+
+        <!-- Spacer pushes the action buttons to the right -->
+        <span class="de-header-spacer"></span>
+
+        <!-- Voice toggle — lets the avatar speak replies aloud (first tap unlocks audio) -->
+        <button class={voiceButtonClass} onclick={handleToggleVoice} title={voiceTitle}>
+            <lightning-icon icon-name={voiceIcon} size="x-small"></lightning-icon>
+        </button>
+
+        <!-- Transcript button -->
+        <template if:true={showTranscriptButton}>
+            <button class="headerButton transcriptButton" onclick={handleHeaderTranscript} title="Download transcript">
+                <lightning-icon icon-name="utility:download" size="x-small"></lightning-icon>
+            </button>
+        </template>
+
+        <!-- Minimize button -->
+        <button class="headerButton minimizeButton" onclick={handleMinimize} title="Minimize">
+            <lightning-icon icon-name="utility:chevrondown" size="x-small"></lightning-icon>
+        </button>
+
+        <!-- Close button -->
+        <button class="headerButton closeButton" onclick={handleCloseClick} title="Close">
+            <lightning-icon icon-name="utility:close" size="x-small"></lightning-icon>
+        </button>
+    </div>
+
+    <!-- Greeting + inline options panel (inside the header frame) -->
+    <template if:true={showOptions}>
+        <div class="de-opt-greeting">
+            <span class="de-opt-hello">Hello! 👋</span>
+            <span class="de-opt-sub">How can I help you today?</span>
+        </div>
+        <div class="de-opt-list" role="menu">
+            <template for:each={menuOptions} for:item="option">
+                <button class={option.cardClass}
+                        key={option.optionIdentifier}
+                        style={option.cardStyle}
+                        data-value={option.optionIdentifier}
+                        onclick={handleMenuOptionClick}
+                        role="menuitem">
+                    <span class="de-opt-emoji" aria-hidden="true">{option.emoji}</span>
+                    <span class="de-opt-title">{option.title}</span>
+                </button>
+            </template>
+        </div>
+    </template>
+    </section>
+
+    <!-- Close confirmation modal -->
+    <template if:true={showCloseModal}>
+        <div class="de-modal-backdrop">
+            <div class="de-modal" role="dialog" aria-modal="true" aria-label="End chat confirmation">
+                <p class="de-modal-title">Are you sure you want to end this chat?</p>
+                <div class="de-modal-actions">
+                    <button class="de-modal-btn de-btn-secondary" onclick={handleDownloadTranscript}>
+                        Download Transcript
+                    </button>
+                    <button class="de-modal-btn de-btn-secondary" onclick={handleCancelClose}>
+                        No, Keep Chatting
+                    </button>
+                    <button class="de-modal-btn de-btn-danger" onclick={handleConfirmClose}>
+                        Yes, End Chat
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+
+    <!-- Post-chat survey -->
+    <template if:true={showSurvey}>
+        <div class="de-modal-backdrop">
+            <div class="de-modal de-survey" role="dialog" aria-modal="true" aria-label="Post-chat survey">
+                <p class="de-modal-title">Before you go — how did we do?</p>
+
+                <div class="de-survey-q">
+                    <p class="de-survey-label">1. How would you rate your overall experience?</p>
+                    <div class="de-stars">
+                        <template for:each={stars} for:item="star">
+                            <button
+                                key={star.value}
+                                class={star.class}
+                                data-value={star.value}
+                                onclick={handleStarClick}
+                                type="button"
+                                aria-label="Rate">
+                                ★
+                            </button>
+                        </template>
+                    </div>
+                </div>
+
+                <div class="de-survey-q">
+                    <p class="de-survey-label">2. Did we resolve your issue?</p>
+                    <div class="de-thumbs">
+                        <button class={thumbUpClass} data-value="up" onclick={handleThumbClick} type="button" aria-label="Thumbs up">
+                            <lightning-icon icon-name="utility:like" size="x-small"></lightning-icon>
+                        </button>
+                        <button class={thumbDownClass} data-value="down" onclick={handleThumbClick} type="button" aria-label="Thumbs down">
+                            <lightning-icon icon-name="utility:dislike" size="x-small"></lightning-icon>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="de-modal-actions">
+                    <button class="de-modal-btn de-btn-primary" onclick={handleSurveySubmit}>
+                        Submit &amp; End Chat
+                    </button>
+                    <button class="de-modal-btn de-btn-secondary" onclick={handleSurveySkip}>
+                        Skip
+                    </button>
+                </div>
+            </div>
+        </div>
+    </template>
+</template>

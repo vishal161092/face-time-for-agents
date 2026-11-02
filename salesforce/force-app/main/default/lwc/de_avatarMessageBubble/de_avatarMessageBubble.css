@@ -1,0 +1,25 @@
+.de-bubble {
+    padding: 9px 13px;
+    border-radius: 14px;
+    font-size: 14px;
+    line-height: 1.4;
+    max-width: 85%;
+    word-wrap: break-word;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.de-bubble-user {
+    margin-left: auto;
+    background: #2f6bff;
+    color: #fff;
+    border-bottom-right-radius: 4px;
+}
+
+.de-bubble-agent {
+    margin-right: auto;
+    background: #fff;
+    border: 1px solid #e4e9f5;
+    color: #1b2440;
+    border-bottom-left-radius: 4px;
+}

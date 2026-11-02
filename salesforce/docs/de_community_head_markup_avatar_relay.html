@@ -1,0 +1,139 @@
+<!--
+  DE Avatar bridge — Experience Cloud (community) HEAD MARKUP
+  =================================================================
+  Paste this INSIDE Experience Builder → Settings → Advanced → Head Markup,
+  AFTER (below) your existing embeddedservice_bootstrap snippet for DUMMY_MIAW.
+
+  Why this exists: in Embedded Messaging Web v2, a custom Header LWC running
+  inside the chat iframe has NO supported API to read inbound message text.
+  The only supported source is the HOST-page event `onEmbeddedMessageSent`.
+  This script listens for it, pulls the agent/bot reply text, and postMessages
+  it into the chat iframe where our avatar header (c-de_custom_chat_header)
+  speaks + lip-syncs it.
+
+  It also relays the header's outbound menu clicks (de_sendText) back into the
+  conversation via embeddedservice_bootstrap.utilAPI.sendTextMessage.
+
+  During first setup, keep the console.log line enabled and open DevTools: the
+  logged e.detail shows the exact payload shape in YOUR org so the extractor /
+  role filter can be tuned. Remove the log once it works.
+-->
+<script type="text/javascript">
+  (function () {
+    "use strict";
+
+    // Windows that announced a live avatar header (handshake from the iframe).
+    var AVATAR_WINDOWS = [];
+
+    window.addEventListener("message", function (e) {
+      var d = e && e.data;
+      if (!d || typeof d !== "object") return;
+
+      // Handshake: the avatar header announces itself from inside the iframe.
+      if (d.type === "de_avatarReady" && e.source) {
+        if (AVATAR_WINDOWS.indexOf(e.source) === -1) AVATAR_WINDOWS.push(e.source);
+        return;
+      }
+
+      // Outbound relay: header menu clicks -> inject as a customer message.
+      if (d.type === "de_sendText" && d.message) {
+        try {
+          if (window.embeddedservice_bootstrap &&
+              embeddedservice_bootstrap.utilAPI &&
+              typeof embeddedservice_bootstrap.utilAPI.sendTextMessage === "function") {
+            embeddedservice_bootstrap.utilAPI.sendTextMessage(d.message);
+          }
+        } catch (err) { /* no-op */ }
+      }
+    });
+
+    // Relay a piece of agent text into the avatar iframe. Build a de-duped set
+    // of target windows so the same window never receives the message twice.
+    function relayToAvatars(text) {
+      var payload = { type: "de_agentMessage", text: text };
+      var targets = [];
+      function add(w) { if (w && targets.indexOf(w) === -1) targets.push(w); }
+
+      // 1) Known handshake windows.
+      AVATAR_WINDOWS.forEach(add);
+
+      // 2) Only if we never got a handshake, fall back to every iframe on the
+      //    page (avoids double-posting to a window already in AVATAR_WINDOWS).
+      if (targets.length === 0) {
+        var frames = document.getElementsByTagName("iframe");
+        for (var i = 0; i < frames.length; i++) {
+          try { add(frames[i].contentWindow); } catch (e) {}
+        }
+      }
+
+      targets.forEach(function (w) {
+        try { w.postMessage(payload, "*"); } catch (e) {}
+      });
+    }
+
+    // Pull the spoken text out of an onEmbeddedMessageSent payload. The exact
+    // shape is org/release dependent, so this is defensive: it normalizes the
+    // documented SSE CONVERSATION_MESSAGE shape
+    // (abstractMessage.staticContent.text) across a few nesting variants, and
+    // skips the end user's OWN messages (we only speak agent/bot replies).
+    function extractAgentText(detail) {
+      if (!detail) return null;
+
+      var entry = detail.conversationEntry || detail.entry || detail;
+
+      // Role / sender detection — skip the customer's own messages.
+      var role =
+        (entry.sender && (entry.sender.role || entry.sender.appType)) ||
+        entry.role ||
+        (detail.sender && detail.sender.role) ||
+        "";
+      role = String(role).toLowerCase();
+      if (role.indexOf("enduser") !== -1 ||
+          role.indexOf("end_user") !== -1 ||
+          role.indexOf("customer") !== -1) {
+        return null;
+      }
+
+      // entryPayload may be a JSON string or an object.
+      var payload = entry.entryPayload || detail.entryPayload;
+      var obj = payload;
+      if (typeof payload === "string") {
+        try { obj = JSON.parse(payload); } catch (e) { obj = null; }
+      }
+
+      var am =
+        (obj && (obj.abstractMessage ||
+          (obj.conversationEntry && obj.conversationEntry.abstractMessage))) ||
+        entry.abstractMessage ||
+        detail.abstractMessage;
+
+      var text = am && am.staticContent && am.staticContent.text;
+      if (!text && obj && obj.staticContent) text = obj.staticContent.text;
+
+      return text || null;
+    }
+
+    // Content de-dupe: the first bot reply fires BOTH onEmbeddedMessageSent and
+    // onEmbeddedMessagingFirstBotMessageSent — relay identical text only once.
+    var _lastText = null, _lastAt = 0;
+
+    function handleInbound(e) {
+      try {
+        // SETUP AID — confirm payload shape in your org, then delete this line:
+        console.log("[de avatar] onEmbeddedMessageSent", e && e.detail);
+        var text = extractAgentText(e && e.detail);
+        if (!text) return;
+        var now = Date.now();
+        if (text === _lastText && (now - _lastAt) < 4000) return;
+        _lastText = text;
+        _lastAt = now;
+        relayToAvatars(text);
+      } catch (err) { /* no-op */ }
+    }
+
+    // Primary inbound event (user/bot/rep all fire it; filtered above).
+    window.addEventListener("onEmbeddedMessageSent", handleInbound);
+    // First bot greeting sometimes arrives on its own event.
+    window.addEventListener("onEmbeddedMessagingFirstBotMessageSent", handleInbound);
+  })();
+</script>

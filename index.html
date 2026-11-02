@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Piper — Real-Time 3D Conversational Avatar (Free / No-Key)</title>
+<style>
+  :root{ --accent:#2f6bff; --ink:#1b2440; --muted:#6b7490; --line:#e4e9f5; }
+  *{box-sizing:border-box}
+  body{ margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    background:#f3f6fc; color:var(--ink); min-height:100vh;
+    display:flex; flex-direction:column; align-items:center; padding-bottom:30px; }
+  header{text-align:center; padding:18px 16px 4px}
+  header h1{margin:0; font-size:19px}
+  header p{margin:6px 0 0; color:var(--muted); font-size:13px}
+
+  .stage{ position:relative; width:min(600px,94vw); height:420px; margin-top:12px;
+    border-radius:22px; overflow:hidden;
+    background:radial-gradient(130% 100% at 50% 0%, #cfe6ff 0%, #dcebff 45%, #eef5ff 100%);
+    box-shadow:0 24px 60px rgba(40,70,140,.22); border:1px solid #d7e3fb; }
+  #c{width:100%; height:100%; display:block}
+  .loading{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    color:#3a4a74; font-size:14px; background:rgba(255,255,255,.3); }
+  .spinner{width:22px;height:22px;border:3px solid #9bc0f5;border-top-color:#2f6bff;border-radius:50%;
+    animation:spin 1s linear infinite; margin-right:10px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  .controls{display:flex; gap:10px; margin-bottom:10px}
+  .controls button{ flex:1 1 auto; border:none; border-radius:12px; padding:12px 14px;
+    font-size:15px; font-weight:600; cursor:pointer; color:#fff;
+    background:var(--accent); transition:transform .08s,opacity .2s; }
+  .controls button.secondary{ background:#e7ecf7; color:var(--ink) }
+  .controls button:active{transform:scale(.98)}
+  .controls button:disabled{opacity:.45; cursor:not-allowed}
+
+  .statechip{ position:absolute; top:14px; left:14px; display:flex; align-items:center; gap:7px;
+    background:rgba(255,255,255,.75); border:1px solid #d7e3fb; border-radius:30px;
+    padding:6px 12px; font-size:12px; color:#3a4a74; backdrop-filter:blur(4px); }
+  .dot{width:8px;height:8px;border-radius:50%;background:#9aa3c7}
+  .dot.listening{background:#35c28e;animation:pulse 1.3s infinite}
+  .dot.thinking{background:#ffb020}
+  .dot.speaking{background:#2f6bff}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(53,194,142,.6)}70%{box-shadow:0 0 0 8px rgba(53,194,142,0)}100%{box-shadow:0 0 0 0 rgba(53,194,142,0)}}
+
+  .panel{width:min(600px,94vw); margin-top:14px}
+  .row{display:flex; gap:10px; margin-bottom:10px}
+  select,input[type=text]{ background:#fff; color:var(--ink); border:1px solid var(--line);
+    border-radius:11px; padding:11px 12px; font-size:14px; }
+  select{flex:0 0 auto}
+  input[type=text]{flex:1 1 auto}
+  .avatarrow input{font-size:12px}
+  .avatarrow button{border:1px solid var(--line); background:#fff; border-radius:11px; padding:0 16px;
+    font-weight:600; cursor:pointer; color:var(--accent)}
+  .transcript{margin-top:4px; max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:8px}
+  .bubble{padding:9px 13px; border-radius:14px; font-size:14px; line-height:1.4; max-width:85%}
+  .bubble.user{align-self:flex-end; background:#2f6bff; color:#fff; border-bottom-right-radius:4px}
+  .bubble.bot{align-self:flex-start; background:#fff; border:1px solid var(--line); border-bottom-left-radius:4px}
+  .createbtn{width:100%; margin-top:2px; border:none; border-radius:12px; padding:12px 14px;
+    font-size:14px; font-weight:700; cursor:pointer; color:#fff;
+    background:linear-gradient(90deg,#6a5cff,#2f6bff);}
+  .createbtn:active{transform:scale(.99)}
+  .rpmmodal{position:fixed; inset:0; background:rgba(16,24,50,.72); backdrop-filter:blur(3px);
+    display:none; align-items:center; justify-content:center; z-index:50; padding:16px}
+  .rpmmodal.open{display:flex}
+  .rpmcard{width:min(900px,96vw); height:min(640px,92vh); background:#fff; border-radius:18px;
+    overflow:hidden; position:relative; box-shadow:0 30px 80px rgba(0,0,0,.4)}
+  .rpmcard iframe{width:100%; height:100%; border:0; display:block}
+  .rpmclose{position:absolute; top:10px; right:12px; z-index:2; border:none; cursor:pointer;
+    background:rgba(0,0,0,.55); color:#fff; border-radius:30px; padding:7px 14px; font-weight:700; font-size:13px}
+  .hint{color:var(--muted); font-size:12px; margin-top:12px; text-align:center; line-height:1.5}
+  .err{color:#d6453b; font-size:13px; text-align:center; margin-top:8px; min-height:16px}
+  code{background:#e9eefb; padding:1px 5px; border-radius:5px}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+  <header>
+    <h1>🧑‍💼 Piper — Real-Time 3D Conversational Avatar</h1>
+    <p>3D human · lip-synced · free · no API key · no GPU — listens, thinks & speaks back live</p>
+  </header>
+
+  <div class="stage">
+    <canvas id="c"></canvas>
+    <div class="statechip"><span class="dot" id="dot"></span><span id="stateText">Loading…</span></div>
+    <div class="loading" id="loading"><span class="spinner"></span>Loading 3D avatar…</div>
+  </div>
+
+  <div class="panel">
+    <div class="controls">
+      <button id="startBtn" disabled>🎤 Start talking</button>
+      <button id="stopBtn" class="secondary" disabled>⏹ Stop</button>
+    </div>
+    <div class="row">
+      <select id="lang" title="Language">
+        <option value="en-US">English (US)</option><option value="en-GB">English (UK)</option>
+        <option value="hi-IN">Hindi</option><option value="es-ES">Spanish</option>
+        <option value="fr-FR">French</option><option value="de-DE">German</option>
+        <option value="ja-JP">Japanese</option><option value="ko-KR">Korean</option>
+        <option value="zh-CN">Chinese</option><option value="ar-SA">Arabic</option>
+      </select>
+      <input type="text" id="typeInput" placeholder="…or type a message and press Enter (no mic needed)" />
+    </div>
+    <div class="row">
+      <select id="avatarPreset" title="Choose avatar">
+        <option value="avatars/aria-rpm.glb">Aria</option>
+        <option value="avatars/brunette.glb">Brunette</option>
+        <option value="avatars/brunette-t.glb">Brunette (casual)</option>
+        <option value="avatars/vroid.glb">VRoid (anime)</option>
+      </select>
+    </div>
+    <div class="row" style="align-items:center">
+      <label for="zoom" style="font-size:12px;color:var(--muted);flex:0 0 auto">Zoom</label>
+      <input type="range" id="zoom" min="0.5" max="3" step="0.05" value="1" style="flex:1 1 auto" />
+    </div>
+    <button id="createOwn" class="createbtn">✨ Create your own realistic face (free)</button>
+    <div class="row avatarrow">
+      <input type="text" id="avatarUrl" placeholder="…or paste a Ready Player Me .glb URL for a custom avatar" />
+      <button id="applyAvatar">Load</button>
+    </div>
+    <div class="transcript" id="transcript"></div>
+    <div class="err" id="err"></div>
+    <div class="hint">
+      Avatars are served locally (no external site needed) — drop any viseme-ready <code>.glb</code> into <code>avatars/</code> to add more.
+      The <b>Create your own</b> button needs access to readyplayer.me (blocked on some corporate networks).
+      Brain is rule-based — swap in Agentforce/LLM at <code>getReply()</code>.
+    </div>
+  </div>
+
+  <div class="rpmmodal" id="rpmModal">
+    <div class="rpmcard">
+      <button class="rpmclose" id="rpmClose">✕ Close</button>
+      <iframe id="rpmFrame" title="Ready Player Me avatar creator"
+        allow="camera *; microphone *; clipboard-write"></iframe>
+    </div>
+  </div>
+
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+const DEFAULT_AVATAR = "avatars/aria-rpm.glb";
+const $=(id)=>document.getElementById(id);
+const startBtn=$('startBtn'),stopBtn=$('stopBtn'),dot=$('dot'),stateText=$('stateText');
+const loadingEl=$('loading'),errEl=$('err'),transcriptEl=$('transcript');
+const langSel=$('lang'),typeInput=$('typeInput'),canvas=$('c');
+const avatarUrlEl=$('avatarUrl'),applyAvatarBtn=$('applyAvatar'),avatarPresetEl=$('avatarPreset');
+const createOwnBtn=$('createOwn'),rpmModal=$('rpmModal'),rpmClose=$('rpmClose'),rpmFrame=$('rpmFrame');
+const zoomEl=$('zoom');
+zoomEl.addEventListener('input',()=>{ zoom=parseFloat(zoomEl.value)||1; reframe(); });
+
+/* normalize an RPM url so it ships the viseme morph targets we need */
+function normalizeAvatarUrl(u){
+  u=(u||'').trim();
+  if(!u) return DEFAULT_AVATAR;
+  if(u.includes('readyplayer.me') && !u.includes('morphTargets')){
+    u += (u.includes('?')?'&':'?') + 'morphTargets=ARKit,Oculus+Visemes&textureAtlas=1024&lod=0';
+  }
+  return u;
+}
+const params=new URLSearchParams(location.search);
+let AVATAR_URL = normalizeAvatarUrl(params.get('avatar')) ;
+
+/* ---------------- Three.js ---------------- */
+let renderer,scene,camera,clock,model;
+let frame=null, zoom=1;
+function reframe(){ if(!frame||!camera) return;
+  camera.position.set(frame.x, frame.y, frame.z + frame.dist*zoom);
+  camera.lookAt(frame.x, frame.y, frame.z);
+}
+let morphIndex={}; const current={},target={};
+function setMorphTarget(n,v){ target[n]=v; }
+function has(n){ return !!morphIndex[n]; }
+function getMorphNames(a){ return a.filter(has); }
+
+function initThree(){
+  renderer=new THREE.WebGLRenderer({canvas,antialias:true,alpha:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+  renderer.outputColorSpace=THREE.SRGBColorSpace;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure=1.15;
+
+  scene=new THREE.Scene();
+  camera=new THREE.PerspectiveCamera(22, 1, 0.1, 100);
+  clock=new THREE.Clock();
+
+  // soft image-based studio lighting → realistic skin/shading
+  const pmrem=new THREE.PMREMGenerator(renderer);
+  scene.environment=pmrem.fromScene(new RoomEnvironment(),0.04).texture;
+
+  // portrait three-point lights
+  scene.add(new THREE.HemisphereLight(0xffffff,0xb9cdee,0.45));
+  const key=new THREE.DirectionalLight(0xfff2e2,2.2); key.position.set(1.2,2.2,2.4); scene.add(key);
+  const fill=new THREE.DirectionalLight(0xdbe8ff,0.9); fill.position.set(-2,1.2,1.6); scene.add(fill);
+  const rim=new THREE.DirectionalLight(0xffffff,1.4); rim.position.set(-0.6,2.4,-2.2); scene.add(rim);
+
+  resize(); window.addEventListener('resize',resize);
+}
+function resize(){
+  const w=canvas.clientWidth||canvas.offsetWidth, h=canvas.clientHeight||canvas.offsetHeight;
+  renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+}
+
+function clearModel(){
+  if(model){ scene.remove(model); model.traverse(o=>{ if(o.geometry)o.geometry.dispose(); }); }
+  model=null; morphIndex={}; for(const k in current){delete current[k];delete target[k];}
+}
+
+function loadAvatar(url){
+  loadingEl.style.display='flex'; loadingEl.innerHTML='<span class="spinner"></span>Loading 3D avatar…';
+  startBtn.disabled=true;
+  const loader=new GLTFLoader(); loader.setMeshoptDecoder(MeshoptDecoder);
+  loader.load(url,(gltf)=>{
+    clearModel();
+    model=gltf.scene; scene.add(model);
+
+    let headBone=null;
+    model.traverse(o=>{
+      if(o.isBone && /head/i.test(o.name) && !/top/i.test(o.name)) headBone=headBone||o;
+      if(o.isMesh){
+        o.frustumCulled=false;
+        if(o.material){ o.material.envMapIntensity=1.0; }
+        if(o.morphTargetDictionary){
+          for(const [n,idx] of Object.entries(o.morphTargetDictionary)){
+            (morphIndex[n]=morphIndex[n]||[]).push({mesh:o,idx});
+            current[n]=0; target[n]=0;
+          }
+        }
+      }
+    });
+
+    // frame head + shoulders — anchored on the HEAD so it works for full-body AND half-body avatars
+    model.updateWorldMatrix(true,true);
+    const box=new THREE.Box3().setFromObject(model);
+    const size=box.getSize(new THREE.Vector3());
+    const center=box.getCenter(new THREE.Vector3());
+    const fov=camera.fov*Math.PI/180;
+    if(headBone){
+      const hp=new THREE.Vector3(); headBone.getWorldPosition(hp);
+      const u=Math.max(1e-4, box.max.y-hp.y);     // ≈ head height in model units (scale-independent)
+      const lookY=hp.y+u*0.45;                     // ≈ face centre
+      const visibleH=u*3.0;                        // show ~3 head-heights → head + shoulders
+      frame={x:hp.x, y:lookY, z:hp.z, dist:(visibleH/2)/Math.tan(fov/2)};
+    } else {
+      const lookY=box.max.y-size.y*0.14;
+      const visibleH=Math.max(size.y*0.5, 1e-3);
+      frame={x:center.x, y:lookY, z:box.max.z, dist:(visibleH/2)/Math.tan(fov/2)};
+    }
+    zoom=1; if(zoomEl) zoomEl.value='1';
+    reframe();
+
+    restingFace();
+    loadingEl.style.display='none'; startBtn.disabled=false;
+    setState('','Ready — tap to talk');
+  },
+  undefined,
+  (e)=>{ loadingEl.innerHTML='⚠️ Could not load that avatar URL. Check it ends in .glb and is public.'; startBtn.disabled=false; });
+}
+
+function restingFace(){
+  ['mouthSmileLeft','mouthSmileRight','mouthSmile'].forEach(n=>{ if(has(n)) setMorphTarget(n,0.2); });
+  if(has('browInnerUp')) setMorphTarget('browInnerUp',0.06);
+}
+
+/* ---------------- lip-sync ---------------- */
+const VISEME_SETS=[['viseme_aa','jawOpen'],['viseme_E'],['viseme_I'],['viseme_O','jawOpen'],
+  ['viseme_U'],['viseme_PP'],['viseme_SS'],['viseme_nn'],['viseme_RR'],['viseme_DD']];
+let speaking=false,mouthTimer=null;
+function clearMouth(){
+  ['viseme_aa','viseme_E','viseme_I','viseme_O','viseme_U','viseme_PP','viseme_SS','viseme_nn',
+   'viseme_RR','viseme_DD','viseme_CH','viseme_FF','viseme_TH','viseme_kk','jawOpen','mouthOpen']
+   .forEach(n=>{ if(has(n)) setMorphTarget(n,0); });
+}
+function randomViseme(strength=1){
+  clearMouth();
+  const set=VISEME_SETS[Math.floor(Math.random()*VISEME_SETS.length)];
+  set.forEach(n=>{ if(has(n)) setMorphTarget(n,(n==='jawOpen'?0.35:0.7)*strength); });
+  if(has('jawOpen')&&!set.includes('jawOpen')) setMorphTarget('jawOpen',0.12*strength+Math.random()*0.15);
+}
+function startMouth(){ speaking=true; mouthTimer=setInterval(()=>randomViseme(0.9+Math.random()*0.3),95); }
+function stopMouth(){ speaking=false; clearInterval(mouthTimer); mouthTimer=null; clearMouth(); }
+function emphasize(){ if(speaking&&has('jawOpen')) setMorphTarget('jawOpen',0.5); }
+
+/* ---------------- blink + render loop ---------------- */
+let nextBlink=2+Math.random()*3;
+function doBlink(){ const n=getMorphNames(['eyeBlinkLeft','eyeBlinkRight']); if(!n.length)return;
+  n.forEach(x=>setMorphTarget(x,1)); setTimeout(()=>n.forEach(x=>setMorphTarget(x,0)),110); }
+
+function animate(){
+  requestAnimationFrame(animate); if(!renderer)return;
+  const dt=clock.getDelta(),t=clock.elapsedTime;
+  for(const name in current){
+    const sp=name.startsWith('eyeBlink')?0.6:0.35;
+    current[name]+=(((target[name]||0)-current[name]))*Math.min(1,sp);
+    const list=morphIndex[name]; if(list) for(const {mesh,idx} of list) mesh.morphTargetInfluences[idx]=current[name];
+  }
+  if(model){ model.position.y=Math.sin(t*1.2)*0.004; model.rotation.y=Math.sin(t*0.4)*0.035; model.rotation.z=Math.sin(t*0.9)*0.005; }
+  nextBlink-=dt; if(nextBlink<=0){ doBlink(); nextBlink=2.5+Math.random()*3.5; }
+  renderer.render(scene,camera);
+}
+
+/* ---------------- conversation ---------------- */
+let recognition=null,listening=false,handling=false;
+function setState(m,x){ dot.className='dot '+(m||''); stateText.textContent=x; }
+function addBubble(x,w){ const b=document.createElement('div'); b.className='bubble '+w; b.textContent=x; transcriptEl.appendChild(b); transcriptEl.scrollTop=transcriptEl.scrollHeight; }
+function showErr(m){ errEl.textContent=m||''; }
+
+async function getReply(userText){
+  if(typeof window.AVATAR_BRAIN==='function'){ try{ return await window.AVATAR_BRAIN(userText); }catch(e){} }
+  const t=userText.toLowerCase().trim();
+  if(/\b(hi|hello|hey|namaste|hola)\b/.test(t)) return "Hi! I'm Piper, your real-time 3D avatar. Ask me anything.";
+  if(/how are you/.test(t)) return "I'm great — running entirely in your browser with no API key!";
+  if(/your name|who are you/.test(t)) return "I'm Piper. This design can live inside Salesforce, powered by Agentforce.";
+  if(/time/.test(t)) return "It's "+new Date().toLocaleTimeString()+" right now.";
+  if(/salesforce|agentforce/.test(t)) return "Yes — I can be embedded in a Salesforce Lightning Web Component with Agentforce as the brain.";
+  if(/language|hindi|spanish|french|chinese|japanese/.test(t)) return "I speak many languages — pick one from the dropdown and I'll reply in that voice.";
+  if(/stop|bye|goodbye/.test(t)) return "Goodbye! Tap the button whenever you want to chat again.";
+  if(/thank/.test(t)) return "You're very welcome!";
+  if(t.endsWith('?')) return "Great question — in the full build, Agentforce or an LLM would answer that.";
+  return "You said: "+userText+". In the real build, an AI brain would reply here.";
+}
+function pickVoice(l){ const v=speechSynthesis.getVoices(); return v.find(x=>x.lang===l)||v.find(x=>x.lang&&x.lang.startsWith(l.split('-')[0]))||null; }
+function speak(text){ return new Promise(res=>{
+  if(!('speechSynthesis'in window)){res();return;}
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text); u.lang=langSel.value; const v=pickVoice(langSel.value); if(v)u.voice=v;
+  u.rate=1.0; u.pitch=1.1;
+  u.onstart=()=>{ setState('speaking','Speaking…'); startMouth(); };
+  u.onboundary=()=>emphasize();
+  u.onend=()=>{ stopMouth(); restingFace(); res(); };
+  u.onerror=()=>{ stopMouth(); restingFace(); res(); };
+  speechSynthesis.speak(u);
+});}
+async function handleUserText(text){
+  if(!text||handling)return; handling=true; addBubble(text,'user');
+  if(recognition&&listening){ try{recognition.stop();}catch(e){} }
+  setState('thinking','Thinking…');
+  const reply=await getReply(text); addBubble(reply,'bot'); await speak(reply);
+  handling=false; if(listening){ try{ recognition.start(); setState('listening','Listening… speak now'); }catch(e){} }
+}
+function buildRecognition(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR)return null;
+  const r=new SR(); r.continuous=false; r.interimResults=false; r.maxAlternatives=1;
+  r.onresult=(e)=>handleUserText(e.results[0][0].transcript);
+  r.onerror=(e)=>{ if(e.error==='no-speech'){ if(listening&&!speaking){try{r.start();}catch(_){}}return; }
+    if(e.error==='not-allowed'||e.error==='service-not-allowed'){ showErr('Microphone blocked. Allow mic and open via http://localhost in Chrome.'); stopSession(); } };
+  r.onend=()=>{ if(listening&&!speaking&&!handling){ try{r.start();}catch(e){} } };
+  return r;
+}
+function startSession(){ showErr(''); recognition=buildRecognition();
+  if(!recognition){ showErr('Speech recognition needs Chrome. You can still type below.'); }
+  else { recognition.lang=langSel.value; try{recognition.start();}catch(e){} }
+  listening=true; startBtn.disabled=true; stopBtn.disabled=false; setState('listening','Listening… speak now');
+}
+function stopSession(){ listening=false; if(recognition){try{recognition.stop();}catch(e){}}
+  speechSynthesis.cancel(); stopMouth(); restingFace();
+  startBtn.disabled=false; stopBtn.disabled=true; setState('','Ready — tap to talk');
+}
+startBtn.onclick=startSession;
+stopBtn.onclick=stopSession;
+langSel.onchange=()=>{ if(recognition) recognition.lang=langSel.value; };
+typeInput.addEventListener('keydown',e=>{ if(e.key==='Enter'&&typeInput.value.trim()){ const v=typeInput.value.trim(); typeInput.value=''; handleUserText(v); } });
+applyAvatarBtn.onclick=()=>{ const u=normalizeAvatarUrl(avatarUrlEl.value); AVATAR_URL=u; loadAvatar(u); };
+avatarUrlEl.addEventListener('keydown',e=>{ if(e.key==='Enter') applyAvatarBtn.click(); });
+avatarPresetEl.onchange=()=>{ const u=avatarPresetEl.value; AVATAR_URL=u; avatarUrlEl.value=''; loadAvatar(u); };
+
+/* ---- Ready Player Me creator ----
+   RPM retired the generic in-iframe "demo" subdomain; embedding now needs your own
+   free Studio subdomain. If RPM_SUBDOMAIN is set below we embed it in-app and auto-load
+   the result; otherwise we open the public creator in a new tab (paste the .glb back). */
+const RPM_SUBDOMAIN=''; // e.g. 'yourname' from studio.readyplayer.me → enables slick in-app flow
+function openRPM(){
+  if(RPM_SUBDOMAIN){
+    rpmFrame.src=`https://${RPM_SUBDOMAIN}.readyplayer.me/avatar?frameApi&clearCache&bodyType=halfbody`;
+    rpmModal.classList.add('open');
+  } else {
+    window.open('https://readyplayer.me/avatar','_blank','noopener');
+    avatarUrlEl.focus();
+    showErr('Build your face in the new tab → copy its .glb link → paste it in the box above → Load.');
+  }
+}
+function closeRPM(){ rpmModal.classList.remove('open'); rpmFrame.src=''; }
+createOwnBtn.onclick=openRPM;
+rpmClose.onclick=closeRPM;
+rpmModal.addEventListener('click',e=>{ if(e.target===rpmModal) closeRPM(); });
+window.addEventListener('message',(e)=>{
+  let json; try{ json=typeof e.data==='string'?JSON.parse(e.data):e.data; }catch(_){ return; }
+  if(!json||json.source!=='readyplayerme') return;
+  if(json.eventName==='v1.frame.ready'){
+    rpmFrame.contentWindow.postMessage(JSON.stringify({target:'readyplayerme',type:'subscribe',eventName:'v1.**'}),'*');
+  }
+  if(json.eventName==='v1.avatar.exported'){
+    const u=normalizeAvatarUrl(json.data.url); AVATAR_URL=u; avatarUrlEl.value=u;
+    closeRPM(); loadAvatar(u);
+  }
+});
+if('speechSynthesis'in window){ speechSynthesis.onvoiceschanged=()=>{}; speechSynthesis.getVoices(); }
+
+/* boot */
+initThree(); loadAvatar(AVATAR_URL); animate();
+</script>
+</body>
+</html>

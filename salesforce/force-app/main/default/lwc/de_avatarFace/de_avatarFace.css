@@ -1,0 +1,20 @@
+:host {
+    display: inline-block;
+    line-height: 0;
+}
+
+.de-avatar-canvas {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: block;
+    background: radial-gradient(130% 100% at 50% 0%, #cfe6ff 0%, #dcebff 45%, #eef5ff 100%);
+    box-shadow: 0 2px 8px rgba(40, 70, 140, 0.25);
+    transition: width 0.25s ease, height 0.25s ease, border-radius 0.25s ease;
+}
+
+:host(.is-big) .de-avatar-canvas {
+    width: 104px;
+    height: 104px;
+    border-radius: 18px;
+}
